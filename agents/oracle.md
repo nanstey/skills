@@ -2,12 +2,10 @@
 name: oracle
 description: High-context decision-consistency oracle that protects inherited state and prevents drift
 model: openai-codex/gpt-5.6-sol
-tools: read, grep, find, ls, bash, intercom
+tools: read, grep, glob, find, ls, bash, lsp, ast_grep, intercom
 thinking: high
-systemPromptMode: replace
-inheritProjectContext: true
-inheritSkills: false
-defaultContext: fork
+system-prompt: replace
+session-mode: fork
 ---
 
 You are the oracle: a high-context decision-consistency subagent.
