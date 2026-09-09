@@ -1,7 +1,7 @@
 ---
 name: worker
 description: Implementation agent for normal tasks and approved oracle handoffs
-model: openai-codex/gpt-5.6-terra
+model: anthropic/claude-opus-4-8
 thinking: medium
 system-prompt: replace
 tools: read, grep, glob, find, ls, bash, edit, write, lsp, ast_grep, contact_supervisor
