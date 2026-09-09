@@ -8,11 +8,13 @@ PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 # A harness installs only the artifact types it lists. Add a "type:dir" pair to
 # teach a harness about a new type; add a row to support a new harness.
 # A dir may be a glob (e.g. one skills dir per hermes profile): it expands to
-# every existing match, so a single pair can fan out to many destinations.
+# every existing match, so a single pair can fan out to many destinations. A
+# glob may sit in an interior segment (e.g. one agents dir per omp profile);
+# the longest globbed prefix is expanded and the literal tail created.
 HARNESSES=(
   "claude|$HOME/.claude|claude|skills:$HOME/.claude/skills;agents:$HOME/.claude/agents"
   "pi|$PI_AGENT_DIR|pi|skills:$PI_AGENT_DIR/skills;agents:$PI_AGENT_DIR/agents;config:$PI_AGENT_DIR::$REPO_ROOT/harness/pi;config:$PI_AGENT_DIR/extensions::$REPO_ROOT/harness/pi/extensions;config:$PI_AGENT_DIR/extensions/pi-interactive-subagents::$REPO_ROOT/harness/pi/extensions/pi-interactive-subagents;config:$PI_AGENT_DIR/intercom::$REPO_ROOT/harness/pi/extensions/pi-intercom;hoist:$PI_AGENT_DIR/npm::$REPO_ROOT/harness/pi/settings.json"
-  "omp|$HOME/.omp/agent|omp|skills:$HOME/.omp/agent/skills;agents:$HOME/.omp/agent/agents;config:$HOME/.omp/agent::$REPO_ROOT/harness/omp;config:$PI_AGENT_DIR/intercom::$REPO_ROOT/harness/pi/extensions/pi-intercom;omp-plugin-manifest:$REPO_ROOT/harness/omp/plugins/pi-intercom.txt;omp-status-line:$REPO_ROOT/harness/omp/status-line/apply.sh"
+  "omp|$HOME/.omp/agent|omp|skills:$HOME/.omp/agent/skills;agents:$HOME/.omp/agent/agents;config:$HOME/.omp/agent::$REPO_ROOT/harness/omp;skills:$HOME/.omp/profiles/*/agent/skills;agents:$HOME/.omp/profiles/*/agent/agents;config:$HOME/.omp/profiles/*/agent::$REPO_ROOT/harness/omp;config:$PI_AGENT_DIR/intercom::$REPO_ROOT/harness/pi/extensions/pi-intercom;omp-plugin-manifest:$REPO_ROOT/harness/omp/plugins/pi-intercom.txt;omp-applicator:$REPO_ROOT/harness/omp/status-line/apply.sh;omp-applicator:$REPO_ROOT/harness/omp/model-roles/apply.sh"
   "codex|$HOME/.codex|codex|skills:$HOME/.codex/skills"
   "cursor|$HOME/.cursor|cursor,cursor-agent|skills:$HOME/.cursor/skills"
   "openclaw|$HOME/.openclaw|openclaw|skills:$HOME/.openclaw/skills"
@@ -74,14 +76,16 @@ install_config() {
   echo "  [config] -> $dest_dir ($summary)"
 }
 
-# OMP's config CLI performs schema-aware updates. Apply the shared status
-# settings to the default config and every existing profile config while leaving
-# profile-local choices, such as composer shape and model roles, untouched.
-install_omp_status_line() {
-  local applicator="$1" agent_dir
+# OMP's config CLI performs schema-aware updates. Run an applicator script
+# against the default config and every existing profile config. Each applicator
+# owns an explicit key list and leaves every other profile-local choice, such as
+# composer shape and `modelRoles.default`, untouched.
+install_omp_applicator() {
+  local applicator="$1" agent_dir label
+  label="$(basename "$(dirname "$applicator")")"
   local -a agent_dirs=("$HOME/.omp/agent")
   if [ ! -f "$applicator" ]; then
-    echo "  [status-line] no source $applicator, skipping"
+    echo "  [$label] no source $applicator, skipping"
     return
   fi
   if [ -d "$HOME/.omp/profiles" ]; then
@@ -174,6 +178,34 @@ link_one() {
   fi
 }
 
+# Expand a destination pattern into concrete directories, one per line.
+# Globbing only matches paths that already exist, so a pattern whose glob sits
+# in an interior segment (e.g. ~/.omp/profiles/*/agent/skills, where the leaf
+# does not exist yet) would expand to nothing. Peel literal trailing segments
+# off until the remaining prefix matches, then re-attach the tail; callers
+# mkdir it. A literal pattern always yields itself; an unmatched glob yields
+# nothing.
+expand_dirs() {
+  local pattern="$1" head tail m
+  local -a matches
+  shopt -s nullglob; matches=( $pattern ); shopt -u nullglob
+  if [ "${#matches[@]}" -gt 0 ]; then printf '%s\n' "${matches[@]}"; return; fi
+  case "$pattern" in
+    *[*?[]*) ;;
+    *) printf '%s\n' "$pattern"; return ;;
+  esac
+  head="$pattern"; tail=""
+  while [ -n "$head" ]; do
+    case "$head" in *[*?[]*) ;; *) return ;; esac
+    shopt -s nullglob; matches=( $head ); shopt -u nullglob
+    if [ "${#matches[@]}" -gt 0 ]; then
+      for m in "${matches[@]}"; do printf '%s\n' "$m$tail"; done
+      return
+    fi
+    tail="/${head##*/}$tail"; head="${head%/*}"
+  done
+}
+
 for entry in "${HARNESSES[@]}"; do
   IFS='|' read -r name detect_dir bins typemap <<<"$entry"
   if ! present "$detect_dir" "$bins"; then echo "skip $name (not installed)"; continue; fi
@@ -182,14 +214,19 @@ for entry in "${HARNESSES[@]}"; do
   for pair in "${pairs[@]}"; do
     type="${pair%%:*}"; pattern="${pair#*:}"
     # config pairs encode both destination and source as DEST::SRC and are
-    # copied rather than symlinked, so they bypass the shared linker loop.
+    # copied rather than symlinked, so they bypass the shared linker loop. The
+    # destination may be a glob (one dir per profile).
     if [ "$type" = "config" ]; then
-      install_config "${pattern%%::*}" "${pattern##*::}"; continue
+      while IFS= read -r dest; do
+        [ -n "$dest" ] || continue
+        install_config "$dest" "${pattern##*::}"
+      done < <(expand_dirs "${pattern%%::*}")
+      continue
     fi
-    # The OMP status-line applicator follows its config copy so it can merge its
+    # OMP config applicators follow the config copy so they can merge their
     # managed schema keys without copying a partial config.yml into the agent dir.
-    if [ "$type" = "omp-status-line" ]; then
-      install_omp_status_line "$pattern"
+    if [ "$type" = "omp-applicator" ]; then
+      install_omp_applicator "$pattern"
       continue
     fi
     # hoist pairs encode NPMDIR::SETTINGS; they bypass the linker loop too.
@@ -205,16 +242,11 @@ for entry in "${HARNESSES[@]}"; do
       agents) collector=collect_agents ;;
       *) echo "  [$type] unknown type, skipping"; continue ;;
     esac
-    # The dir may be a glob; nullglob makes a non-matching pattern expand to
-    # nothing rather than to itself.
-    shopt -s nullglob; dirs=( $pattern ); shopt -u nullglob
+    mapfile -t dirs < <(expand_dirs "$pattern")
     if [ "${#dirs[@]}" -eq 0 ]; then
-      # No matches: a literal path installs anyway (creating it), but an unmatched
-      # glob has no destination — e.g. a harness with no profiles yet — so skip it.
-      case "$pattern" in
-        *[*?[]*) echo "  [$type] no match for $pattern, skipping"; continue ;;
-        *) dirs=( "$pattern" ) ;;
-      esac
+      # An unmatched glob has no destination — e.g. a harness with no profiles
+      # yet — so skip it rather than creating a literal `*` directory.
+      echo "  [$type] no match for $pattern, skipping"; continue
     fi
     for dir in "${dirs[@]}"; do
       mkdir -p "$dir"
