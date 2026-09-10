@@ -219,6 +219,7 @@ Focused planning skills below are optional and independently selectable; `propos
 | [`fresh-air`](skills/code-quality/fresh-air/SKILL.md) | Recommend best-fit refactoring techniques for smell findings with confidence. |
 | [`refactor`](skills/code-quality/refactor/SKILL.md) | Orchestrate smell validation, technique selection, and final implementation planning. |
 | [`scrutiny`](skills/code-quality/scrutiny/SKILL.md) | Silently interrogates a build/design across the relevant engineering domains, self-answering what the codebase and defaults allow and escalating only authority decisions, then builds and verifies. Vendored and adapted from [m4vic/socratic](https://github.com/m4vic/socratic) (MIT). |
+| [`ponytail`](skills/code-quality/ponytail/SKILL.md) | Lazy-senior-dev discipline: stop at the first rung of the YAGNI/reuse/stdlib/native ladder, plus one-shot review, audit, and debt-ledger modes. Vendored and adapted from [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) (MIT). |
 
 ### Authoring (project skills)
 
