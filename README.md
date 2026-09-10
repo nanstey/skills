@@ -169,6 +169,7 @@ Focused planning skills below are optional and independently selectable; `propos
 | [`grow`](skills/writing/grow/SKILL.md) | Structure current-to-future planning as Goal, Reality, Options, Will to bridge a current state to a target. |
 | [`observation-impact-question`](skills/writing/observation-impact-question/SKILL.md) | Structure lightweight feedback as Observation, Impact, Question to stay specific and non-accusatory. |
 | [`before-after-bridge`](skills/writing/before-after-bridge/SKILL.md) | Structure a results story as Before, After, Bridge so a demo or outcome leads with impact. |
+| [`ste`](skills/writing/ste/SKILL.md) | Rewrite dense or ambiguous English into ASD-STE100 Simplified Technical English so a machine or non-native reader cannot misparse it. |
 
 ### Visual
 
