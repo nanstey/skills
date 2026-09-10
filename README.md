@@ -66,8 +66,9 @@ pi                                     # installs packages from settings.json
 <details>
 <summary><code>harness/omp/</code> (OMP)</summary>
 
-`install.sh` links shared skills and agents into `~/.omp/agent`, copies portable
-OMP config, applies the versioned status-line settings, and installs the packages
+`install.sh` links shared skills and agents into `~/.omp/agent` and every
+existing `~/.omp/profiles/*/agent`, copies portable OMP config to each, applies
+the versioned status-line and model-role settings, and installs the packages
 below with OMP's native `omp install` command:
 
 | Repository path | Install destination | Purpose |
@@ -75,20 +76,35 @@ below with OMP's native `omp install` command:
 | [`harness/omp/APPEND_SYSTEM.md`](harness/omp/APPEND_SYSTEM.md) | `~/.omp/agent/APPEND_SYSTEM.md` | Adds bounded delegation and collision-safe temporary-file guidance. |
 | [`harness/omp/plugins/pi-intercom.txt`](harness/omp/plugins/pi-intercom.txt) | Not copied; passed to `omp install` | Installs `npm:pi-intercom@0.12.0`. Blank and comment lines are ignored. |
 | [`harness/omp/status-line/apply.sh`](harness/omp/status-line/apply.sh) | Default and existing profile `config.yml` files (via `omp config`) | Selectively merges the versioned Nerd Font status-line schema. |
+| [`harness/omp/model-roles/apply.sh`](harness/omp/model-roles/apply.sh) | Default and existing profile `config.yml` files (via `omp config`) | Merges the versioned `modelRoles` tiers (`smol`, `task`, `slow`, `designer`) that bundled agents select through `@role` aliases, plus the `task.agentModelOverrides` pins. Leaves `modelRoles.default` alone. |
 
 The installer copies each top-level, non-dot file under `harness/omp/` as a whole
-file. Nested files such as the plugin manifest and status-line applicator are not
+file into every OMP agent dir. Nested files such as the plugin manifest and the
+applicator scripts are not
 copied. A differing destination file is replaced, so local edits to a managed
 file such as `APPEND_SYSTEM.md` are clobbered the next time `install.sh` runs.
 Native OMP package installation failure exits the installer with an error.
 
-After copying OMP artifacts for a detected OMP harness, `install.sh` runs the
-status-line applicator against `~/.omp/agent/config.yml` and each existing
-`~/.omp/profiles/*/agent/config.yml`. It compares every managed schema value with
-`omp config get` and calls `omp config set` only for differences. Unrelated and
-profile-local settings—including `composer.shape`, `modelRoles`,
-`webSearchOrder`, and `setupVersion`—remain untouched; reruns are idempotent.
-There is no copied `harness/omp/config.yml`.
+After copying OMP artifacts for a detected OMP harness, `install.sh` runs each
+applicator against `~/.omp/agent/config.yml` and each existing
+`~/.omp/profiles/*/agent/config.yml`. Every applicator owns an explicit key list,
+compares each managed value with `omp config get`, and calls `omp config set`
+only for differences. Unrelated and profile-local settings—including
+`composer.shape`, `modelRoles.default`, `webSearchOrder`, and `setupVersion`—remain
+untouched; reruns are idempotent. There is no copied `harness/omp/config.yml`.
+
+Bundled OMP agents (`scout`, `librarian`, `sonic`, `reviewer`, `task`,
+`designer`) pick their model through `@smol`, `@slow`, `@task`, and `@designer`
+aliases. An unmapped alias silently falls back to the parent session's active
+model, which runs cheap recon agents on an expensive session model, so the
+model-roles applicator keeps those four tiers mapped and pins `sonic`, the
+strictly mechanical agent, to the cheapest tier at low effort.
+
+Tier selection follows billing, not list price: `openai-codex` is authenticated
+by OAuth against a ChatGPT plan, so its models bill against that subscription,
+while `anthropic` runs on a metered API key. The light, high-volume tiers
+(`smol`, `task`, `slow`) therefore stay on codex models, and `designer` uses
+Sonnet rather than Fable ($2/$10 per Mtok instead of $10/$50).
 
 The custom Nerd Font line uses each profile's chosen composer. It groups model,
 compact context usage such as `39.0%/272K`, Git state, and session name on the

@@ -28,20 +28,75 @@ Required frontmatter:
 ```yaml
 name: agent-name
 description: Third-person summary ending with "Delegate when ..."
-tools: Read, Grep, Glob, Bash
-model: inherit
+model: openai-codex/gpt-5.6-luna
+tools: read, grep, glob, find, ls, bash, edit, write, intercom
+thinking: medium
 ```
 
 - `name`: required; lowercase-hyphenated; repo-unique; should match filename.
 - `description`: required; third person; ends with `Delegate when ...`.
-- `tools`: optional; keep least-privilege; omit to inherit all.
-- `model`: optional; `inherit | sonnet | haiku | opus`.
+- `model`: required; `provider/model` selector. Prefer `openai-codex/*`, which
+  bills against the ChatGPT subscription, over metered `anthropic/*`.
+- `tools`: required; least-privilege.
+- `thinking`: `low` for recon, `medium` for normal work, `high` for adjudication.
+
+### Dual-harness frontmatter
+
+One profile is installed to both pi and OMP, which read different keys. Under pi
+the reader is the `pi-interactive-subagents` extension
+(`pi-extension/subagents/index.ts`); under OMP it is `parseAgentFields()`. Both
+ignore keys and tool names they do not recognise, so a union works — but a
+misspelled key is silently dead rather than rejected.
+
+| Key | pi | OMP | Rule |
+| --- | --- | --- | --- |
+| `model` | single selector | CSV priority list | Keep a single selector. |
+| `tools` | pi vocabulary | OMP vocabulary | Union both; each side drops what it does not know. |
+| `thinking` | honoured | honoured | Safe. |
+| `system-prompt` | `replace` \| `append` | ignored | pi's real key. **Not** `systemPromptMode`. |
+| `session-mode` | `fork` \| `lineage-only` \| `standalone` | ignored | pi's real key. **Not** `defaultContext`. |
+| `skills`, `deny-tools`, `spawning`, `auto-exit`, `interactive`, `cwd`, `cli`, `disable-model-invocation` | honoured | ignored | pi-only, correctly spelled. |
+| `read-summarize` | ignored | verbatim reads when `false` | Set `false` for recon agents. |
+| `spawns`, `blocking`, `autoloadSkills`, `prewalk`, `advisor` | ignored | honoured | OMP-only. |
+| `output` | ignored | **structured-output schema** | Never use. See below. |
+| `fallbackModels`, `inheritProjectContext`, `inheritSkills`, `defaultReads`, `defaultContext`, `defaultProgress`, `systemPromptMode` | **dead** | **dead** | Invented keys with no consumer in either harness. Never add. |
+
+That last row is not hypothetical: every one of those keys shipped in this
+repo's profiles and none was ever read. Grep the harness that will consume a key
+before adding it.
+
+Tool-name vocabulary: `read`, `grep`, `bash`, `edit`, `write`, `web_search` exist
+in both. `find` and `ls` are pi-only. `glob`, `lsp`, `ast_grep`, `yield`, and `hub`
+are OMP-only. `intercom`, `contact_supervisor`, `fetch_content`, and
+`get_search_content` come from pi extensions. List every name the agent needs on
+either harness in one CSV.
+
+Two caveats confirmed by probing a live subagent: `ast_grep` stays unavailable
+until `astGrep.enabled` is set (default `false`), and OMP grants `yield`, `hub`,
+and `write` whether or not they are listed. A read-only agent therefore needs the
+restriction stated in its body, not just withheld from `tools`.
+
+**Never set `output:` to a filename.** OMP reads it as a structured-output
+schema, and a bare string is not one. The agent
+then fails its dispatch with `Subagent called yield with null data` whenever it
+returns prose. Instead, name the artifact in the body: write to the path when the
+dispatcher supplies one, otherwise return the report inline.
 
 Body contract:
 
 - Imperative, single-role, and self-contained instructions.
 - Include stop-and-ask guidance when ambiguity affects behavior or safety.
 - Include the override rule: target repo `CLAUDE.md`/`AGENTS.md` wins on conflict.
+- Do not claim a specific harness ("running inside pi"); the profile runs on both.
+
+### Name collisions with OMP bundled agents
+
+OMP ships bundled agents named `scout`, `reviewer`, `designer`, `security-reviewer`,
+`librarian`, `task`, and `sonic`. Discovery is first-wins by name, and user agents
+outrank bundled ones, so a profile using one of those names **replaces** the
+bundled agent under OMP. Taking a bundled name is a deliberate act: match or beat
+what it provided (read-only tool set, `read-summarize: false`, role-aliased model)
+rather than silently regressing it.
 
 ## Required Inputs
 
